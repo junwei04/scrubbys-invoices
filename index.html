@@ -186,6 +186,8 @@ nav.tabbar .ic{font-size:18px;}
       <h2>Customer</h2>
       <label>Name</label>
       <input id="custName" placeholder="Client name">
+      <label>Company (optional)</label>
+      <input id="custCompany" placeholder="Company name, if any">
       <label>Phone / Contact</label>
       <input id="custPhone" placeholder="9XXXXXXX">
       <label>Address (optional)</label>
@@ -441,6 +443,7 @@ function resetNewForm(){
   editingId = null;
   lineItems = [{name:'', desc:'', qty:1, price:0}];
   document.getElementById('custName').value='';
+  document.getElementById('custCompany').value='';
   document.getElementById('custPhone').value='';
   document.getElementById('custAddress').value='';
   document.getElementById('docNotes').value='';
@@ -468,6 +471,7 @@ function saveDocument(){
     dueDate: document.getElementById('docDueDate').value || document.getElementById('docDate').value,
     customer: {
       name: custName,
+      company: document.getElementById('custCompany').value.trim(),
       phone: document.getElementById('custPhone').value.trim(),
       address: document.getElementById('custAddress').value.trim()
     },
@@ -663,6 +667,12 @@ function buildPdfDoc(record){
   let custY = yy + 14;
   pdf.setFont('helvetica','normal');
   pdf.setFontSize(10);
+  if(record.customer.company){
+    pdf.setFont('helvetica','bold');
+    pdf.text(record.customer.company, col1, custY);
+    pdf.setFont('helvetica','normal');
+    custY += 13;
+  }
   if(record.customer.phone){ pdf.text(record.customer.phone, col1, custY); custY += 13; }
   if(record.customer.address){
     const lines = pdf.splitTextToSize(record.customer.address, 150);
@@ -809,6 +819,7 @@ function getCurrentRecordFromForm(){
     dueDate: document.getElementById('docDueDate').value || document.getElementById('docDate').value,
     customer:{
       name: document.getElementById('custName').value.trim() || 'Customer',
+      company: document.getElementById('custCompany').value.trim(),
       phone: document.getElementById('custPhone').value.trim(),
       address: document.getElementById('custAddress').value.trim()
     },
@@ -912,6 +923,7 @@ function loadDocument(id){
   document.getElementById('docDate').value = d.date;
   document.getElementById('docDueDate').value = d.dueDate || d.date;
   document.getElementById('custName').value = d.customer.name;
+  document.getElementById('custCompany').value = d.customer.company || '';
   document.getElementById('custPhone').value = d.customer.phone;
   document.getElementById('custAddress').value = d.customer.address;
   document.getElementById('docNotes').value = d.notes;
@@ -931,6 +943,7 @@ function convertToInvoice(id){
   document.getElementById('docDate').value = todayStr();
   document.getElementById('docDueDate').value = todayStr();
   document.getElementById('custName').value = d.customer.name;
+  document.getElementById('custCompany').value = d.customer.company || '';
   document.getElementById('custPhone').value = d.customer.phone;
   document.getElementById('custAddress').value = d.customer.address;
   document.getElementById('docNotes').value = d.notes;
