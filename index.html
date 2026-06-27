@@ -201,8 +201,20 @@ nav.tabbar .ic{font-size:18px;}
     </div>
 
     <div class="card">
-      <div class="totals grand">
+      <div class="totals">
+        <span>Subtotal</span>
+        <span id="subtotalDisplay">$0.00</span>
+      </div>
+      <label>Discount ($, optional)</label>
+      <input type="number" id="docDiscount" min="0" step="0.01" value="0" onchange="updateGrandTotal()">
+      <div class="totals">
         <span>Total</span>
+        <span id="totalDisplay">$0.00</span>
+      </div>
+      <label>Deposit Paid ($, optional)</label>
+      <input type="number" id="docDeposit" min="0" step="0.01" value="0" onchange="updateGrandTotal()">
+      <div class="totals grand">
+        <span>Amount Due</span>
         <span id="grandTotal">$0.00</span>
       </div>
       <label>Notes (optional)</label>
@@ -433,9 +445,20 @@ function removeLineItem(idx){
   renderLineItems();
 }
 
+function computeTotals(){
+  const subtotal = lineItems.reduce((sum,i)=> sum + (i.qty*i.price), 0);
+  const discount = parseFloat(document.getElementById('docDiscount').value) || 0;
+  const deposit = parseFloat(document.getElementById('docDeposit').value) || 0;
+  const total = Math.max(subtotal - discount, 0);
+  const amountDue = Math.max(total - deposit, 0);
+  return { subtotal, discount, deposit, total, amountDue };
+}
+
 function updateGrandTotal(){
-  const total = lineItems.reduce((sum,i)=> sum + (i.qty*i.price), 0);
-  document.getElementById('grandTotal').textContent = '$' + total.toFixed(2);
+  const t = computeTotals();
+  document.getElementById('subtotalDisplay').textContent = '$' + t.subtotal.toFixed(2);
+  document.getElementById('totalDisplay').textContent = '$' + t.total.toFixed(2);
+  document.getElementById('grandTotal').textContent = '$' + t.amountDue.toFixed(2);
 }
 
 /* ---------------- new document reset ---------------- */
@@ -449,6 +472,8 @@ function resetNewForm(){
   document.getElementById('docNotes').value='';
   document.getElementById('docDate').value = todayStr();
   document.getElementById('docDueDate').value = todayStr();
+  document.getElementById('docDiscount').value = 0;
+  document.getElementById('docDeposit').value = 0;
   setDocType('quote');
   renderLineItems();
 }
@@ -460,7 +485,7 @@ function saveDocument(){
   const cleanItems = lineItems.filter(i => (i.desc && i.desc.trim()) || i.qty*i.price>0);
   if(cleanItems.length===0){ toast('Add at least one line item'); return; }
 
-  const total = cleanItems.reduce((s,i)=>s+i.qty*i.price,0);
+  const t = computeTotals();
   const docNumber = document.getElementById('docNumber').value;
 
   const record = {
@@ -477,7 +502,11 @@ function saveDocument(){
     },
     items: cleanItems,
     notes: document.getElementById('docNotes').value.trim(),
-    total,
+    subtotal: t.subtotal,
+    discount: t.discount,
+    deposit: t.deposit,
+    total: t.total,
+    amountDue: t.amountDue,
     status: 'draft',
     createdAt: editingId ? (docs().find(d=>d.id===editingId)?.createdAt || todayStr()) : todayStr()
   };
@@ -617,6 +646,13 @@ function buildPdfDoc(record){
   const width = right - left;
   let y = 50;
 
+  // backward-compatible totals (older saved records may lack these fields)
+  const subtotal = record.subtotal != null ? record.subtotal : record.total;
+  const discount = record.discount || 0;
+  const deposit = record.deposit || 0;
+  const totalAfterDiscount = record.total != null ? record.total : subtotal;
+  const amountDue = record.amountDue != null ? record.amountDue : totalAfterDiscount;
+
   // logo top-left
   try{
     if(LOGO_BASE64 && LOGO_BASE64.indexOf('__LOGO') === -1){
@@ -662,7 +698,7 @@ function buildPdfDoc(record){
   pdf.text(record.docNumber || '-', col3, yy);
   pdf.setFont('helvetica','bold');
   pdf.setFontSize(20);
-  pdf.text('$'+record.total.toFixed(2), col4, yy+2, {align:'right'});
+  pdf.text('$'+amountDue.toFixed(2), col4, yy+2, {align:'right'});
 
   let custY = yy + 14;
   pdf.setFont('helvetica','normal');
@@ -731,8 +767,13 @@ function buildPdfDoc(record){
   pdf.setFontSize(10);
   pdf.setTextColor(...INK);
   pdf.text('Subtotal', left+390, y, {align:'right'});
-  pdf.text('$'+record.total.toFixed(2), right, y, {align:'right'});
+  pdf.text('$'+subtotal.toFixed(2), right, y, {align:'right'});
   y += 16;
+  if(discount > 0){
+    pdf.text('Discount', left+390, y, {align:'right'});
+    pdf.text('-$'+discount.toFixed(2), right, y, {align:'right'});
+    y += 16;
+  }
   pdf.text('Taxes', left+390, y, {align:'right'});
   pdf.text('$0.00', right, y, {align:'right'});
   y += 10;
@@ -742,11 +783,11 @@ function buildPdfDoc(record){
 
   pdf.setFont('helvetica','bold');
   pdf.text('Total', left+390, y, {align:'right'});
-  pdf.text('$'+record.total.toFixed(2), right, y, {align:'right'});
+  pdf.text('$'+totalAfterDiscount.toFixed(2), right, y, {align:'right'});
   y += 16;
   pdf.setFont('helvetica','normal');
-  pdf.text('Amount Paid', left+390, y, {align:'right'});
-  pdf.text('$0.00', right, y, {align:'right'});
+  pdf.text('Deposit Paid', left+390, y, {align:'right'});
+  pdf.text('$'+deposit.toFixed(2), right, y, {align:'right'});
   y += 10;
   pdf.setDrawColor(...LINEGREY);
   pdf.line(left+330, y, right, y);
@@ -757,7 +798,7 @@ function buildPdfDoc(record){
   pdf.setTextColor(...BLUE);
   pdf.text('Amount Due', left+390, y, {align:'right'});
   pdf.setTextColor(...INK);
-  pdf.text('$'+record.total.toFixed(2), right, y, {align:'right'});
+  pdf.text('$'+amountDue.toFixed(2), right, y, {align:'right'});
   y += 34;
 
   // Notes + PayNow QR
@@ -769,8 +810,10 @@ function buildPdfDoc(record){
   pdf.setFont('helvetica','normal');
   pdf.setFontSize(10);
   pdf.setTextColor(...INK);
-  if(record.type==='invoice' && biz.uen){
+  if(record.type==='invoice' && biz.uen && amountDue > 0){
     pdf.text('Payment can be made through PayNow to UEN ' + biz.uen, left, y);
+  } else if(record.type==='invoice' && amountDue <= 0){
+    pdf.text('Paid in full — no balance outstanding.', left, y);
   }
   if(record.notes){
     y += 14;
@@ -778,9 +821,9 @@ function buildPdfDoc(record){
     pdf.text(noteLines, left, y);
   }
 
-  if(record.type==='invoice' && biz.uen){
+  if(record.type==='invoice' && biz.uen && amountDue > 0){
     const canvas = document.createElement('canvas');
-    renderPayNowQR(canvas, record.total, record.docNumber);
+    renderPayNowQR(canvas, amountDue, record.docNumber);
     const dataUrl = canvas.toDataURL('image/png');
     const qrSize = 90;
     pdf.addImage(dataUrl, 'PNG', right-qrSize, y-14, qrSize, qrSize);
@@ -810,7 +853,7 @@ function buildPdfDoc(record){
 
 function getCurrentRecordFromForm(){
   const cleanItems = lineItems.filter(i => (i.desc && i.desc.trim()) || i.qty*i.price>0);
-  const total = cleanItems.reduce((s,i)=>s+i.qty*i.price,0);
+  const t = computeTotals();
   return {
     id: editingId || 'preview',
     type: currentType,
@@ -825,7 +868,11 @@ function getCurrentRecordFromForm(){
     },
     items: cleanItems,
     notes: document.getElementById('docNotes').value.trim(),
-    total
+    subtotal: t.subtotal,
+    discount: t.discount,
+    deposit: t.deposit,
+    total: t.total,
+    amountDue: t.amountDue
   };
 }
 
@@ -894,7 +941,7 @@ function renderHistory(){
         <span class="status-pill status-${d.status}">${d.status}</span>
       </div>
       <div>
-        <div class="amt">$${d.total.toFixed(2)}</div>
+        <div class="amt">$${(d.amountDue != null ? d.amountDue : d.total).toFixed(2)}</div>
         <select onchange="setStatus('${d.id}', this.value)" style="margin-top:6px;font-size:11px;padding:4px;width:auto;">
           <option value="draft" ${d.status==='draft'?'selected':''}>Draft</option>
           <option value="sent" ${d.status==='sent'?'selected':''}>Sent</option>
@@ -927,6 +974,8 @@ function loadDocument(id){
   document.getElementById('custPhone').value = d.customer.phone;
   document.getElementById('custAddress').value = d.customer.address;
   document.getElementById('docNotes').value = d.notes;
+  document.getElementById('docDiscount').value = d.discount || 0;
+  document.getElementById('docDeposit').value = d.deposit || 0;
   lineItems = JSON.parse(JSON.stringify(d.items));
   renderLineItems();
   showScreen('new');
@@ -947,6 +996,8 @@ function convertToInvoice(id){
   document.getElementById('custPhone').value = d.customer.phone;
   document.getElementById('custAddress').value = d.customer.address;
   document.getElementById('docNotes').value = d.notes;
+  document.getElementById('docDiscount').value = d.discount || 0;
+  document.getElementById('docDeposit').value = 0;
   lineItems = JSON.parse(JSON.stringify(d.items));
   renderLineItems();
   // mark source quote as accepted
