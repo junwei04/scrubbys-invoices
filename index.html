@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/qrcode.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{
   --bg:#f4f3ef;
@@ -184,6 +185,7 @@ nav.tabbar .ic{font-size:18px;}
 
     <div class="card">
       <h2>Customer</h2>
+      <button class="btn btn-secondary" style="margin-bottom:14px;" onclick="openBookingImport()">📅 Import from Booking</button>
       <label>Name</label>
       <input id="custName" placeholder="Client name">
       <label>Company (optional)</label>
@@ -295,6 +297,14 @@ nav.tabbar .ic{font-size:18px;}
   </div>
 </div>
 
+<div class="preview-overlay" id="bookingOverlay" onclick="if(event.target===this)closeBookingImport()">
+  <div class="preview-sheet">
+    <h3>Import from Booking</h3>
+    <div id="bookingArea"></div>
+    <button class="btn btn-secondary" style="margin-top:14px;" onclick="closeBookingImport()">Close</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -361,6 +371,104 @@ let lineItems = [];
 function uid(){ return 'd' + Date.now() + Math.random().toString(16).slice(2,6); }
 
 function pad(n){ return String(n).padStart(4,'0'); }
+
+/* ---------------- Google Calendar booking import ---------------- */
+const GOOGLE_CLIENT_ID = '524027341739-keug70p2vrg8iiu340g5igrhmidhj6m5.apps.googleusercontent.com';
+let _gcalTokenClient = null;
+let _gcalAccessToken = null;
+
+function getGcalTokenClient(){
+  if(_gcalTokenClient) return _gcalTokenClient;
+  _gcalTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    callback: (resp) => {
+      if(resp.access_token){
+        _gcalAccessToken = resp.access_token;
+        fetchAndRenderBookings();
+      } else {
+        renderBookingError('Could not connect to Google Calendar.');
+      }
+    }
+  });
+  return _gcalTokenClient;
+}
+
+function openBookingImport(){
+  document.getElementById('bookingArea').innerHTML = '<div class="empty">Connecting to Google Calendar…</div>';
+  document.getElementById('bookingOverlay').classList.add('active');
+  if(typeof google === 'undefined' || !google.accounts){
+    renderBookingError('Google sign-in script did not load. Check your internet connection.');
+    return;
+  }
+  const client = getGcalTokenClient();
+  client.requestAccessToken({prompt: _gcalAccessToken ? '' : 'consent'});
+}
+
+function closeBookingImport(){
+  document.getElementById('bookingOverlay').classList.remove('active');
+}
+
+function renderBookingError(msg){
+  document.getElementById('bookingArea').innerHTML = `<div class="empty">${msg}</div>`;
+}
+
+async function fetchAndRenderBookings(){
+  document.getElementById('bookingArea').innerHTML = '<div class="empty">Loading upcoming bookings…</div>';
+  const now = new Date();
+  const timeMin = now.toISOString();
+  const future = new Date(now.getTime() + 60*24*60*60*1000);
+  const timeMax = future.toISOString();
+  const url = `https://www.googleapis.com/calendar/v3/events?calendarId=primary&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=50`;
+  try{
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + _gcalAccessToken } });
+    if(!res.ok){
+      if(res.status === 401){ _gcalAccessToken = null; }
+      renderBookingError('Could not load bookings (status ' + res.status + '). Try again.');
+      return;
+    }
+    const data = await res.json();
+    const events = (data.items || []).filter(e => e.summary);
+    if(events.length === 0){
+      renderBookingError('No upcoming bookings found in the next 60 days.');
+      return;
+    }
+    document.getElementById('bookingArea').innerHTML = events.map((e, idx) => {
+      const start = e.start.dateTime || e.start.date;
+      const dateLabel = (e.start.dateTime ? new Date(e.start.dateTime) : new Date(e.start.date+'T00:00:00')).toDateString();
+      return `
+        <div class="history-item" style="cursor:pointer;" onclick='applyBooking(${idx})'>
+          <div class="meta">
+            <div class="docnum">${e.summary}</div>
+            <div class="client">${dateLabel}${e.location ? ' · '+e.location : ''}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    window._gcalEvents = events;
+  }catch(err){
+    renderBookingError('Network error loading bookings.');
+  }
+}
+
+function applyBooking(idx){
+  const e = window._gcalEvents[idx];
+  if(!e) return;
+  const title = e.summary || '';
+  const phoneMatch = title.match(/\d{8}/);
+  const phone = phoneMatch ? phoneMatch[0] : '';
+  const name = phone ? title.replace(phone, '').replace(/[-,]/g,' ').trim() : title.trim();
+  const start = e.start.dateTime ? e.start.dateTime.slice(0,10) : e.start.date;
+
+  document.getElementById('custName').value = name;
+  document.getElementById('custPhone').value = phone;
+  document.getElementById('custAddress').value = e.location || '';
+  document.getElementById('docDate').value = start;
+  document.getElementById('docDueDate').value = start;
+
+  closeBookingImport();
+  toast('Imported booking — add service & price');
+}
 
 function setDocType(type){
   currentType = type;
