@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Scrubbys Invoices</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1b2a2f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Scrubbys">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="lib/jspdf.umd.min.js"></script>
+<script src="lib/qrcode.min.js"></script>
+<style>
+:root{
+  --bg:#f4f3ef;
+  --panel:#ffffff;
+  --ink:#1b2a2f;
+  --ink-soft:#5b6b6f;
+  --accent:#1b2a2f;
+  --line:#e4e1d8;
+  --good:#3a6b52;
+  --warn:#a8762c;
+  --bad:#a8392f;
+  --radius:14px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:90px;
+}
+header.topbar{
+  position:sticky;top:0;z-index:20;
+  background:var(--accent);color:#fff;
+  padding:calc(env(safe-area-inset-top) + 14px) 18px 14px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+header.topbar h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.2px;}
+header.topbar .sub{font-size:12px;opacity:.7;margin-top:2px;}
+main{padding:16px;max-width:640px;margin:0 auto;}
+.card{
+  background:var(--panel);
+  border-radius:var(--radius);
+  padding:16px;
+  margin-bottom:14px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+  border:1px solid var(--line);
+}
+.card h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin:0 0 12px;}
+label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;margin-top:10px;}
+label:first-child{margin-top:0;}
+input,select,textarea{
+  width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
+  font-size:15px;background:#fafaf8;color:var(--ink);font-family:inherit;
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);background:#fff;}
+textarea{resize:vertical;min-height:50px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.toggle-type{display:flex;gap:8px;margin-bottom:4px;}
+.toggle-type button{
+  flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:#fafaf8;
+  font-size:14px;font-weight:600;color:var(--ink-soft);
+}
+.toggle-type button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.lineitem{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#fafaf8;position:relative;}
+.lineitem .remove{
+  position:absolute;top:8px;right:8px;background:none;border:none;color:var(--bad);
+  font-size:18px;line-height:1;padding:4px 8px;
+}
+.li-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+.li-amount{text-align:right;font-size:13px;color:var(--ink-soft);margin-top:6px;}
+.addrow-btn{
+  width:100%;padding:11px;border:1.5px dashed var(--line);border-radius:10px;background:none;
+  color:var(--ink-soft);font-size:14px;font-weight:600;
+}
+.totals{display:flex;justify-content:space-between;padding:6px 2px;font-size:14px;}
+.totals.grand{font-size:18px;font-weight:700;border-top:1px solid var(--line);margin-top:6px;padding-top:10px;}
+.btn{
+  display:block;width:100%;padding:14px;border-radius:12px;border:none;
+  font-size:15px;font-weight:600;text-align:center;margin-bottom:10px;
+}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-secondary{background:#fff;color:var(--accent);border:1.5px solid var(--accent);}
+.btn-ghost{background:none;color:var(--ink-soft);text-decoration:underline;padding:8px;}
+.btn-row{display:flex;gap:10px;}
+.btn-row .btn{margin-bottom:0;}
+nav.tabbar{
+  position:fixed;bottom:0;left:0;right:0;z-index:20;
+  background:#fff;border-top:1px solid var(--line);
+  display:flex;padding-bottom:env(safe-area-inset-bottom);
+}
+nav.tabbar button{
+  flex:1;padding:12px 0 10px;background:none;border:none;font-size:11px;color:var(--ink-soft);
+  display:flex;flex-direction:column;align-items:center;gap:3px;font-weight:600;
+}
+nav.tabbar button.active{color:var(--accent);}
+nav.tabbar .ic{font-size:18px;}
+.screen{display:none;}
+.screen.active{display:block;}
+.history-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 0;border-bottom:1px solid var(--line);
+}
+.history-item:last-child{border-bottom:none;}
+.history-item .meta{flex:1;}
+.history-item .docnum{font-weight:700;font-size:14px;}
+.history-item .client{font-size:13px;color:var(--ink-soft);}
+.history-item .amt{font-weight:700;font-size:14px;text-align:right;}
+.status-pill{
+  display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;
+  padding:3px 8px;border-radius:20px;margin-top:4px;letter-spacing:.03em;
+}
+.status-draft{background:#eee;color:#777;}
+.status-sent{background:#fdecd2;color:var(--warn);}
+.status-accepted,.status-paid{background:#dcf0e3;color:var(--good);}
+.status-expired{background:#fbdedb;color:var(--bad);}
+.empty{text-align:center;color:var(--ink-soft);padding:40px 20px;font-size:14px;}
+.service-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+.service-row input:first-child{flex:2;}
+.service-row input:nth-child(2){flex:1;}
+.service-row button{background:none;border:none;color:var(--bad);font-size:18px;padding:4px;}
+.preview-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:none;
+  align-items:flex-end;
+}
+.preview-overlay.active{display:flex;}
+.preview-sheet{
+  background:#fff;width:100%;max-height:92vh;border-radius:18px 18px 0 0;
+  padding:18px;overflow-y:auto;
+}
+.preview-sheet h3{margin:0 0 14px;font-size:16px;}
+.toast{
+  position:fixed;bottom:100px;left:50%;transform:translateX(-50%);
+  background:var(--ink);color:#fff;padding:10px 18px;border-radius:30px;font-size:13px;
+  z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;
+}
+.toast.show{opacity:1;}
+.small-link{font-size:12px;color:var(--ink-soft);text-decoration:underline;background:none;border:none;padding:0;margin-top:8px;}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div>
+    <h1 id="topbarTitle">Scrubbys</h1>
+    <div class="sub" id="topbarSub">Quotes &amp; Invoices</div>
+  </div>
+  <div style="font-size:22px;">🧾</div>
+</header>
+
+<main>
+
+  <!-- NEW DOCUMENT SCREEN -->
+  <section class="screen active" id="screen-new">
+
+    <div class="card">
+      <div class="toggle-type">
+        <button id="typeQuoteBtn" onclick="setDocType('quote')">Quote</button>
+        <button id="typeInvoiceBtn" onclick="setDocType('invoice')">Invoice</button>
+      </div>
+      <div class="row2">
+        <div>
+          <label id="docNumLabel">Quote No.</label>
+          <input id="docNumber" readonly>
+        </div>
+        <div>
+          <label>Date</label>
+          <input type="date" id="docDate">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Customer</h2>
+      <label>Name</label>
+      <input id="custName" placeholder="Client name">
+      <label>Phone / Contact</label>
+      <input id="custPhone" placeholder="9XXXXXXX">
+      <label>Address (optional)</label>
+      <textarea id="custAddress" placeholder="Site address"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Line Items</h2>
+      <div id="lineItemsWrap"></div>
+      <button class="addrow-btn" onclick="addLineItem()">+ Add item</button>
+    </div>
+
+    <div class="card">
+      <div class="totals grand">
+        <span>Total</span>
+        <span id="grandTotal">$0.00</span>
+      </div>
+      <label>Notes (optional)</label>
+      <textarea id="docNotes" placeholder="e.g. Quote valid for 14 days"></textarea>
+    </div>
+
+    <button class="btn btn-primary" onclick="saveDocument()">Save</button>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="previewPdf()">Preview PDF</button>
+      <button class="btn btn-secondary" onclick="shareDocument()">Share / WhatsApp</button>
+    </div>
+  </section>
+
+  <!-- HISTORY SCREEN -->
+  <section class="screen" id="screen-history">
+    <div class="card">
+      <h2>History</h2>
+      <div id="historyList"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS SCREEN -->
+  <section class="screen" id="screen-settings">
+    <div class="card">
+      <h2>Business Info</h2>
+      <label>Business Name</label>
+      <input id="bizName">
+      <label>UEN</label>
+      <input id="bizUEN">
+      <label>Contact Number</label>
+      <input id="bizPhone">
+      <label>Address (optional, shown on PDF)</label>
+      <textarea id="bizAddress"></textarea>
+      <button class="btn btn-secondary" style="margin-top:10px;" onclick="saveBusinessInfo()">Save Business Info</button>
+    </div>
+
+    <div class="card">
+      <h2>Service Price List</h2>
+      <div id="serviceListWrap"></div>
+      <button class="addrow-btn" onclick="addServiceRow()">+ Add service</button>
+      <button class="btn btn-secondary" style="margin-top:10px;" onclick="saveServiceList()">Save Service List</button>
+    </div>
+
+    <div class="card">
+      <h2>Numbering</h2>
+      <label>Next Quote Number</label>
+      <input type="number" id="nextQuoteNum">
+      <label>Next Invoice Number</label>
+      <input type="number" id="nextInvoiceNum">
+      <button class="btn btn-secondary" style="margin-top:10px;" onclick="saveNumbering()">Save Numbering</button>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabbar">
+  <button class="active" data-screen="new" onclick="showScreen('new')">
+    <span class="ic">📝</span><span>New</span>
+  </button>
+  <button data-screen="history" onclick="showScreen('history')">
+    <span class="ic">📂</span><span>History</span>
+  </button>
+  <button data-screen="settings" onclick="showScreen('settings')">
+    <span class="ic">⚙️</span><span>Settings</span>
+  </button>
+</nav>
+
+<div class="preview-overlay" id="previewOverlay" onclick="if(event.target===this)closePreview()">
+  <div class="preview-sheet">
+    <h3>PDF Preview</h3>
+    <canvas id="qrCanvas" style="display:none;"></canvas>
+    <div id="previewArea" style="text-align:center;"></div>
+    <button class="btn btn-secondary" style="margin-top:14px;" onclick="closePreview()">Close</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------- storage helpers ---------------- */
+const LS = {
+  get(key, fallback){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; } },
+  set(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+};
+
+const DEFAULT_BUSINESS = {
+  name: "SCRUBBYS PRIVATE LIMITED",
+  uen: "202313458R",
+  phone: "90716978",
+  address: ""
+};
+
+const DEFAULT_SERVICES = [
+  {name:"Post Renovation Cleaning", price:300},
+  {name:"End Of Tenancy Cleaning", price:350},
+  {name:"Spring Cleaning", price:400},
+  {name:"Steam Clean (Upholstery)", price:300},
+  {name:"Shampoo Clean / Extraction (Upholstery)", price:350},
+  {name:"Stain Removal", price:400},
+  {name:"Floor Power Scrub & Vinyl Coat (Rotowash Floor Scrub)", price:250},
+  {name:"Steam Mop", price:200},
+  {name:"Pressure Jet Wash (Outdoor)", price:250},
+  {name:"Restoration Works", price:300},
+  {name:"Formaldehyde (HCHO) Treatment", price:300},
+  {name:"Deodorising Service", price:300},
+  {name:"Oven, Cooker Hood & Hob Degreasing", price:0},
+  {name:"Window Clean & Polish", price:0},
+  {name:"Floor Grout Treatment", price:0},
+  {name:"Chandelier Cleaning", price:0},
+  {name:"High Level Cleaning", price:0}
+];
+
+function business(){ return LS.get('biz_info', DEFAULT_BUSINESS); }
+function services(){ return LS.get('service_list', DEFAULT_SERVICES); }
+function docs(){ return LS.get('documents', []); }
+function saveDocs(d){ LS.set('documents', d); }
+function numbering(){ return LS.get('numbering', {quote:1, invoice:1}); }
+function saveNumberingRaw(n){ LS.set('numbering', n); }
+
+/* ---------------- state ---------------- */
+let currentType = 'quote';
+let editingId = null;
+let lineItems = [];
+
+function uid(){ return 'd' + Date.now() + Math.random().toString(16).slice(2,6); }
+
+function pad(n){ return String(n).padStart(4,'0'); }
+
+function setDocType(type){
+  currentType = type;
+  document.getElementById('typeQuoteBtn').classList.toggle('active', type==='quote');
+  document.getElementById('typeInvoiceBtn').classList.toggle('active', type==='invoice');
+  document.getElementById('docNumLabel').textContent = type==='quote' ? 'Quote No.' : 'Invoice No.';
+  if(!editingId){
+    const n = numbering();
+    const num = type==='quote' ? n.quote : n.invoice;
+    document.getElementById('docNumber').value = (type==='quote' ? 'QT-' : 'INV-') + pad(num);
+  }
+}
+
+function todayStr(){
+  const d = new Date(); // safe: not Date.now()/random per workflow rule, but this runs in plain webapp not workflow, fine
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+/* ---------------- line items UI ---------------- */
+function renderLineItems(){
+  const wrap = document.getElementById('lineItemsWrap');
+  wrap.innerHTML = '';
+  lineItems.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'lineitem';
+    const svc = services();
+    let options = '<option value="">Custom item...</option>';
+    svc.forEach(s => {
+      options += `<option value="${s.name}" data-price="${s.price}" ${item.name===s.name?'selected':''}>${s.name}</option>`;
+    });
+    div.innerHTML = `
+      <button class="remove" onclick="removeLineItem(${idx})">&times;</button>
+      <label>Service</label>
+      <select onchange="onServiceSelect(${idx}, this)">${options}</select>
+      <label>Description</label>
+      <input value="${item.desc.replace(/"/g,'&quot;')}" onchange="updateLineItem(${idx}, 'desc', this.value)" placeholder="Description shown on PDF">
+      <div class="li-grid">
+        <div>
+          <label>Qty</label>
+          <input type="number" min="0" step="1" value="${item.qty}" onchange="updateLineItem(${idx}, 'qty', this.value)">
+        </div>
+        <div>
+          <label>Unit Price ($)</label>
+          <input type="number" min="0" step="0.01" value="${item.price}" onchange="updateLineItem(${idx}, 'price', this.value)">
+        </div>
+      </div>
+      <div class="li-amount">Amount: $${(item.qty*item.price).toFixed(2)}</div>
+    `;
+    wrap.appendChild(div);
+  });
+  updateGrandTotal();
+}
+
+function onServiceSelect(idx, sel){
+  const opt = sel.options[sel.selectedIndex];
+  if(opt.value){
+    lineItems[idx].name = opt.value;
+    lineItems[idx].desc = opt.value;
+    lineItems[idx].price = parseFloat(opt.dataset.price) || 0;
+  } else {
+    lineItems[idx].name = '';
+  }
+  renderLineItems();
+}
+
+function updateLineItem(idx, field, val){
+  if(field==='qty' || field==='price') val = parseFloat(val) || 0;
+  lineItems[idx][field] = val;
+  renderLineItems();
+}
+
+function addLineItem(){
+  lineItems.push({name:'', desc:'', qty:1, price:0});
+  renderLineItems();
+}
+
+function removeLineItem(idx){
+  lineItems.splice(idx,1);
+  renderLineItems();
+}
+
+function updateGrandTotal(){
+  const total = lineItems.reduce((sum,i)=> sum + (i.qty*i.price), 0);
+  document.getElementById('grandTotal').textContent = '$' + total.toFixed(2);
+}
+
+/* ---------------- new document reset ---------------- */
+function resetNewForm(){
+  editingId = null;
+  lineItems = [{name:'', desc:'', qty:1, price:0}];
+  document.getElementById('custName').value='';
+  document.getElementById('custPhone').value='';
+  document.getElementById('custAddress').value='';
+  document.getElementById('docNotes').value='';
+  document.getElementById('docDate').value = todayStr();
+  setDocType('quote');
+  renderLineItems();
+}
+
+/* ---------------- save ---------------- */
+function saveDocument(){
+  const custName = document.getElementById('custName').value.trim();
+  if(!custName){ toast('Enter customer name first'); return; }
+  const cleanItems = lineItems.filter(i => (i.desc && i.desc.trim()) || i.qty*i.price>0);
+  if(cleanItems.length===0){ toast('Add at least one line item'); return; }
+
+  const total = cleanItems.reduce((s,i)=>s+i.qty*i.price,0);
+  const docNumber = document.getElementById('docNumber').value;
+
+  const record = {
+    id: editingId || uid(),
+    type: currentType,
+    docNumber,
+    date: document.getElementById('docDate').value,
+    customer: {
+      name: custName,
+      phone: document.getElementById('custPhone').value.trim(),
+      address: document.getElementById('custAddress').value.trim()
+    },
+    items: cleanItems,
+    notes: document.getElementById('docNotes').value.trim(),
+    total,
+    status: 'draft',
+    createdAt: editingId ? (docs().find(d=>d.id===editingId)?.createdAt || todayStr()) : todayStr()
+  };
+
+  let all = docs();
+  if(editingId){
+    all = all.map(d => d.id===editingId ? record : d);
+  } else {
+    all.push(record);
+    const n = numbering();
+    if(currentType==='quote') n.quote += 1; else n.invoice += 1;
+    saveNumberingRaw(n);
+  }
+  saveDocs(all);
+  toast('Saved ' + (currentType==='quote'?'quote':'invoice') + ' ' + docNumber);
+  editingId = record.id;
+}
+
+/* ---------------- PayNow QR (EMVCo / SGQR spec) ---------------- */
+function crc16(str){
+  let crc = 0xFFFF;
+  for(let i=0;i<str.length;i++){
+    crc ^= str.charCodeAt(i) << 8;
+    for(let j=0;j<8;j++){
+      if((crc & 0x8000) !== 0){ crc = (crc << 1) ^ 0x1021; } else { crc = crc << 1; }
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4,'0');
+}
+function tlv(id, value){
+  const len = String(value.length).padStart(2,'0');
+  return id + len + value;
+}
+function buildPayNowPayload(amount, billRef){
+  const biz = business();
+  const merchantName = (biz.name || 'SCRUBBYS').substring(0,25);
+  const proxyType = '2'; // UEN
+  const proxyValue = biz.uen;
+
+  let merchantAccountInfo =
+    tlv('00','SG.PAYNOW') +
+    tlv('01', proxyType) +
+    tlv('02', proxyValue) +
+    tlv('03', '0'); // amount not editable by payer (we set exact amount)
+
+  let payload =
+    tlv('00','01') +                  // payload format indicator
+    tlv('01','12') +                  // point of initiation: dynamic (single use)
+    tlv('26', merchantAccountInfo) +  // merchant account info (PayNow)
+    tlv('52','0000') +                // merchant category code
+    tlv('53','702') +                 // currency SGD
+    tlv('54', amount.toFixed(2)) +    // amount
+    tlv('58','SG') +                  // country
+    tlv('59', merchantName) +         // merchant name
+    tlv('60','Singapore') +           // merchant city
+    tlv('62', tlv('01', (billRef||'').substring(0,25)) ); // additional data - bill number
+
+  payload += '6304';
+  const crc = crc16(payload);
+  return payload + crc;
+}
+
+function renderPayNowQR(canvas, amount, billRef){
+  const payload = buildPayNowPayload(amount, billRef);
+  const qr = qrcode(0, 'M');
+  qr.addData(payload);
+  qr.make();
+  const size = qr.getModuleCount();
+  const cellSize = 6;
+  canvas.width = size*cellSize;
+  canvas.height = size*cellSize;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#000';
+  for(let r=0;r<size;r++){
+    for(let c=0;c<size;c++){
+      if(qr.isDark(r,c)){
+        ctx.fillRect(c*cellSize, r*cellSize, cellSize, cellSize);
+      }
+    }
+  }
+}
+
+/* ---------------- PDF generation ---------------- */
+function buildPdfDoc(record){
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({unit:'pt', format:'a4'});
+  const biz = business();
+  const margin = 48;
+  let y = margin;
+
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(20);
+  pdf.text(biz.name || 'SCRUBBYS', margin, y);
+  y += 22;
+  pdf.setFont('helvetica','normal');
+  pdf.setFontSize(10);
+  pdf.setTextColor(90,90,90);
+  if(biz.uen) { pdf.text('UEN: ' + biz.uen, margin, y); y += 14; }
+  if(biz.phone) { pdf.text('Tel: ' + biz.phone, margin, y); y += 14; }
+  if(biz.address) { pdf.text(biz.address, margin, y); y += 14; }
+
+  pdf.setTextColor(20,20,20);
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(16);
+  const title = record.type==='quote' ? 'QUOTATION' : 'INVOICE';
+  pdf.text(title, 547, margin, {align:'right'});
+  pdf.setFont('helvetica','normal');
+  pdf.setFontSize(10);
+  pdf.text(record.docNumber, 547, margin+16, {align:'right'});
+  pdf.text('Date: ' + record.date, 547, margin+30, {align:'right'});
+
+  y = Math.max(y, margin+30) + 24;
+  pdf.setDrawColor(220,220,220);
+  pdf.line(margin, y, 547, y);
+  y += 20;
+
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(11);
+  pdf.text('Bill To:', margin, y);
+  y += 14;
+  pdf.setFont('helvetica','normal');
+  pdf.text(record.customer.name, margin, y);
+  y += 13;
+  if(record.customer.phone){ pdf.text(record.customer.phone, margin, y); y += 13; }
+  if(record.customer.address){
+    const lines = pdf.splitTextToSize(record.customer.address, 250);
+    pdf.text(lines, margin, y);
+    y += lines.length*13;
+  }
+
+  y += 16;
+  // table header
+  pdf.setFillColor(27,42,47);
+  pdf.rect(margin, y, 499, 22, 'F');
+  pdf.setTextColor(255,255,255);
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(10);
+  pdf.text('Description', margin+8, y+15);
+  pdf.text('Qty', margin+330, y+15);
+  pdf.text('Unit Price', margin+380, y+15);
+  pdf.text('Amount', 547-8, y+15, {align:'right'});
+  y += 22;
+
+  pdf.setTextColor(20,20,20);
+  pdf.setFont('helvetica','normal');
+  record.items.forEach((item, idx) => {
+    const rowH = 22;
+    if(idx % 2 === 1){
+      pdf.setFillColor(247,246,242);
+      pdf.rect(margin, y, 499, rowH, 'F');
+    }
+    pdf.text(item.desc || item.name || '-', margin+8, y+15);
+    pdf.text(String(item.qty), margin+330, y+15);
+    pdf.text('$'+item.price.toFixed(2), margin+380, y+15);
+    pdf.text('$'+(item.qty*item.price).toFixed(2), 547-8, y+15, {align:'right'});
+    y += rowH;
+  });
+
+  y += 10;
+  pdf.setDrawColor(220,220,220);
+  pdf.line(margin+330, y, 547, y);
+  y += 18;
+  pdf.setFont('helvetica','bold');
+  pdf.setFontSize(13);
+  pdf.text('Total', margin+380, y);
+  pdf.text('$'+record.total.toFixed(2), 547, y, {align:'right'});
+  y += 30;
+
+  if(record.notes){
+    pdf.setFont('helvetica','normal');
+    pdf.setFontSize(10);
+    pdf.setTextColor(90,90,90);
+    pdf.text('Notes:', margin, y);
+    y += 13;
+    const noteLines = pdf.splitTextToSize(record.notes, 499);
+    pdf.text(noteLines, margin, y);
+    y += noteLines.length*13;
+  }
+
+  // PayNow QR
+  if(record.type==='invoice' && biz.uen){
+    y += 16;
+    const canvas = document.createElement('canvas');
+    renderPayNowQR(canvas, record.total, record.docNumber);
+    const dataUrl = canvas.toDataURL('image/png');
+    const qrSize = 110;
+    pdf.setFont('helvetica','bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(20,20,20);
+    pdf.text('Scan to Pay (PayNow)', margin, y+14);
+    pdf.addImage(dataUrl, 'PNG', margin, y+22, qrSize, qrSize);
+    pdf.setFont('helvetica','normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(90,90,90);
+    pdf.text('Amount: $'+record.total.toFixed(2), margin+qrSize+12, y+40);
+    pdf.text('UEN: '+biz.uen, margin+qrSize+12, y+54);
+  }
+
+  return pdf;
+}
+
+function getCurrentRecordFromForm(){
+  const cleanItems = lineItems.filter(i => (i.desc && i.desc.trim()) || i.qty*i.price>0);
+  const total = cleanItems.reduce((s,i)=>s+i.qty*i.price,0);
+  return {
+    id: editingId || 'preview',
+    type: currentType,
+    docNumber: document.getElementById('docNumber').value,
+    date: document.getElementById('docDate').value,
+    customer:{
+      name: document.getElementById('custName').value.trim() || 'Customer',
+      phone: document.getElementById('custPhone').value.trim(),
+      address: document.getElementById('custAddress').value.trim()
+    },
+    items: cleanItems,
+    notes: document.getElementById('docNotes').value.trim(),
+    total
+  };
+}
+
+function previewPdf(){
+  const record = getCurrentRecordFromForm();
+  if(record.items.length===0){ toast('Add at least one line item'); return; }
+  const pdf = buildPdfDoc(record);
+  const blob = pdf.output('blob');
+  const url = URL.createObjectURL(blob);
+  document.getElementById('previewArea').innerHTML = `<iframe src="${url}" style="width:100%;height:70vh;border:none;border-radius:8px;"></iframe>`;
+  document.getElementById('previewOverlay').classList.add('active');
+}
+
+function closePreview(){
+  document.getElementById('previewOverlay').classList.remove('active');
+  document.getElementById('previewArea').innerHTML = '';
+}
+
+async function shareDocument(){
+  const record = getCurrentRecordFromForm();
+  if(record.items.length===0){ toast('Add at least one line item'); return; }
+  const pdf = buildPdfDoc(record);
+  const blob = pdf.output('blob');
+  const filename = `${record.type==='quote'?'Quote':'Invoice'}-${record.docNumber}-${record.customer.name}.pdf`.replace(/\s+/g,'_');
+  const file = new File([blob], filename, {type:'application/pdf'});
+
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({
+        files:[file],
+        title: filename,
+        text: `${record.type==='quote'?'Quotation':'Invoice'} ${record.docNumber} from ${business().name}`
+      });
+      // auto-save + mark sent on successful share
+      saveDocument();
+      const all = docs();
+      const idx = all.findIndex(d=>d.id===editingId);
+      if(idx>=0){ all[idx].status='sent'; saveDocs(all); }
+      return;
+    }catch(e){
+      if(e.name !== 'AbortError'){ toast('Share failed, falling back to download'); }
+      else { return; }
+    }
+  }
+  // fallback: download
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('PDF downloaded — share it manually via WhatsApp');
+}
+
+/* ---------------- history ---------------- */
+function renderHistory(){
+  const wrap = document.getElementById('historyList');
+  const all = docs().slice().sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||'') || b.docNumber.localeCompare(a.docNumber));
+  if(all.length===0){
+    wrap.innerHTML = '<div class="empty">No quotes or invoices yet.<br>Create one in the New tab.</div>';
+    return;
+  }
+  wrap.innerHTML = all.map(d => `
+    <div class="history-item">
+      <div class="meta" onclick="loadDocument('${d.id}')" style="cursor:pointer;">
+        <div class="docnum">${d.docNumber} · ${d.customer.name}</div>
+        <div class="client">${d.date}${d.customer.phone ? ' · '+d.customer.phone : ''}</div>
+        <span class="status-pill status-${d.status}">${d.status}</span>
+      </div>
+      <div>
+        <div class="amt">$${d.total.toFixed(2)}</div>
+        <select onchange="setStatus('${d.id}', this.value)" style="margin-top:6px;font-size:11px;padding:4px;width:auto;">
+          <option value="draft" ${d.status==='draft'?'selected':''}>Draft</option>
+          <option value="sent" ${d.status==='sent'?'selected':''}>Sent</option>
+          <option value="accepted" ${d.status==='accepted'?'selected':''}>Accepted</option>
+          <option value="paid" ${d.status==='paid'?'selected':''}>Paid</option>
+          <option value="expired" ${d.status==='expired'?'selected':''}>Expired</option>
+        </select>
+        ${d.type==='quote' ? `<button class="small-link" onclick="convertToInvoice('${d.id}')">→ Invoice</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function setStatus(id, status){
+  const all = docs();
+  const idx = all.findIndex(d=>d.id===id);
+  if(idx>=0){ all[idx].status = status; saveDocs(all); renderHistory(); }
+}
+
+function loadDocument(id){
+  const d = docs().find(x=>x.id===id);
+  if(!d) return;
+  editingId = d.id;
+  setDocType(d.type);
+  document.getElementById('docNumber').value = d.docNumber;
+  document.getElementById('docDate').value = d.date;
+  document.getElementById('custName').value = d.customer.name;
+  document.getElementById('custPhone').value = d.customer.phone;
+  document.getElementById('custAddress').value = d.customer.address;
+  document.getElementById('docNotes').value = d.notes;
+  lineItems = JSON.parse(JSON.stringify(d.items));
+  renderLineItems();
+  showScreen('new');
+}
+
+function convertToInvoice(id){
+  const d = docs().find(x=>x.id===id);
+  if(!d) return;
+  editingId = null;
+  currentType = 'invoice';
+  const n = numbering();
+  document.getElementById('docNumber').value = 'INV-' + pad(n.invoice);
+  setDocType('invoice');
+  document.getElementById('docDate').value = todayStr();
+  document.getElementById('custName').value = d.customer.name;
+  document.getElementById('custPhone').value = d.customer.phone;
+  document.getElementById('custAddress').value = d.customer.address;
+  document.getElementById('docNotes').value = d.notes;
+  lineItems = JSON.parse(JSON.stringify(d.items));
+  renderLineItems();
+  // mark source quote as accepted
+  const all = docs();
+  const idx = all.findIndex(x=>x.id===id);
+  if(idx>=0){ all[idx].status='accepted'; saveDocs(all); }
+  showScreen('new');
+  toast('Converted to invoice — review and Save');
+}
+
+/* ---------------- settings: business info ---------------- */
+function loadBusinessInfoForm(){
+  const b = business();
+  document.getElementById('bizName').value = b.name;
+  document.getElementById('bizUEN').value = b.uen;
+  document.getElementById('bizPhone').value = b.phone;
+  document.getElementById('bizAddress').value = b.address || '';
+}
+function saveBusinessInfo(){
+  LS.set('biz_info', {
+    name: document.getElementById('bizName').value.trim(),
+    uen: document.getElementById('bizUEN').value.trim(),
+    phone: document.getElementById('bizPhone').value.trim(),
+    address: document.getElementById('bizAddress').value.trim()
+  });
+  toast('Business info saved');
+}
+
+/* ---------------- settings: services ---------------- */
+function renderServiceList(){
+  const wrap = document.getElementById('serviceListWrap');
+  const svc = services();
+  wrap.innerHTML = svc.map((s, idx) => `
+    <div class="service-row">
+      <input value="${s.name.replace(/"/g,'&quot;')}" onchange="updateServiceField(${idx},'name',this.value)">
+      <input type="number" step="0.01" value="${s.price}" onchange="updateServiceField(${idx},'price',this.value)">
+      <button onclick="removeServiceRow(${idx})">&times;</button>
+    </div>
+  `).join('');
+}
+let _editingServices = null;
+function updateServiceField(idx, field, val){
+  if(!_editingServices) _editingServices = JSON.parse(JSON.stringify(services()));
+  if(field==='price') val = parseFloat(val)||0;
+  _editingServices[idx][field] = val;
+}
+function addServiceRow(){
+  if(!_editingServices) _editingServices = JSON.parse(JSON.stringify(services()));
+  _editingServices.push({name:'New Service', price:0});
+  LS.set('service_list', _editingServices);
+  renderServiceList();
+}
+function removeServiceRow(idx){
+  if(!_editingServices) _editingServices = JSON.parse(JSON.stringify(services()));
+  _editingServices.splice(idx,1);
+  LS.set('service_list', _editingServices);
+  renderServiceList();
+}
+function saveServiceList(){
+  if(_editingServices){ LS.set('service_list', _editingServices); _editingServices = null; }
+  toast('Service list saved');
+}
+
+/* ---------------- settings: numbering ---------------- */
+function loadNumberingForm(){
+  const n = numbering();
+  document.getElementById('nextQuoteNum').value = n.quote;
+  document.getElementById('nextInvoiceNum').value = n.invoice;
+}
+function saveNumbering(){
+  saveNumberingRaw({
+    quote: parseInt(document.getElementById('nextQuoteNum').value)||1,
+    invoice: parseInt(document.getElementById('nextInvoiceNum').value)||1
+  });
+  toast('Numbering updated');
+  if(!editingId) setDocType(currentType);
+}
+
+/* ---------------- navigation ---------------- */
+function showScreen(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  document.querySelectorAll('nav.tabbar button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
+  if(name==='history') renderHistory();
+  if(name==='settings'){ loadBusinessInfoForm(); renderServiceList(); loadNumberingForm(); }
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ---------------- init ---------------- */
+resetNewForm();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
