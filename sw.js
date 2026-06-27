@@ -5,6 +5,7 @@ const ASSETS = [
   './manifest.json',
   './lib/jspdf.umd.min.js',
   './lib/qrcode.min.js',
+  './assets/logo.png',
   './icon-192.png',
   './icon-512.png'
 ];
