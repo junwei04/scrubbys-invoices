@@ -1142,7 +1142,15 @@ function renderHistory(){
 function setStatus(id, status){
   const all = docs();
   const idx = all.findIndex(d=>d.id===id);
-  if(idx>=0){ all[idx].status = status; saveDocs(all); renderHistory(); }
+  if(idx<0) return;
+  all[idx].status = status;
+  if(status==='paid' && all[idx].type==='invoice'){
+    const total = all[idx].total != null ? all[idx].total : all[idx].amountDue;
+    all[idx].deposit = total;
+    all[idx].amountDue = 0;
+  }
+  saveDocs(all);
+  renderHistory();
 }
 
 function loadDocument(id){
