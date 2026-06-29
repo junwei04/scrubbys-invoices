@@ -436,7 +436,8 @@ function renderBookingError(msg){
 async function fetchAndRenderBookings(){
   document.getElementById('bookingArea').innerHTML = '<div class="empty">Loading upcoming bookings…</div>';
   const now = new Date();
-  const timeMin = now.toISOString();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const timeMin = startOfToday.toISOString();
   const future = new Date(now.getTime() + 60*24*60*60*1000);
   const timeMax = future.toISOString();
   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=50`;
