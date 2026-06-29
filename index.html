@@ -167,7 +167,7 @@ nav.tabbar .ic{font-size:18px;}
       <div class="row2">
         <div>
           <label id="docNumLabel">Quote No.</label>
-          <input id="docNumber" readonly>
+          <input id="docNumber">
         </div>
         <div>
           <label>Date of Issue</label>
@@ -277,7 +277,7 @@ nav.tabbar .ic{font-size:18px;}
 </main>
 
 <nav class="tabbar">
-  <button class="active" data-screen="new" onclick="showScreen('new')">
+  <button class="active" data-screen="new" onclick="startNewDocument()">
     <span class="ic">📝</span><span>New</span>
   </button>
   <button data-screen="history" onclick="showScreen('history')">
@@ -630,6 +630,7 @@ function saveDocument(){
 
   const t = computeTotals();
   const docNumber = document.getElementById('docNumber').value;
+  const existing = editingId ? docs().find(d=>d.id===editingId) : null;
 
   const record = {
     id: editingId || uid(),
@@ -650,8 +651,8 @@ function saveDocument(){
     deposit: t.deposit,
     total: t.total,
     amountDue: t.amountDue,
-    status: 'draft',
-    createdAt: editingId ? (docs().find(d=>d.id===editingId)?.createdAt || todayStr()) : todayStr()
+    status: existing ? existing.status : 'draft',
+    createdAt: existing ? (existing.createdAt || todayStr()) : todayStr()
   };
 
   let all = docs();
@@ -1320,6 +1321,11 @@ function showScreen(name){
   document.querySelectorAll('nav.tabbar button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
   if(name==='history') renderHistory();
   if(name==='settings'){ loadBusinessInfoForm(); renderServiceList(); loadNumberingForm(); }
+}
+
+function startNewDocument(){
+  resetNewForm();
+  showScreen('new');
 }
 
 function toast(msg){
