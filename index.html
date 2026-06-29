@@ -305,6 +305,17 @@ nav.tabbar .ic{font-size:18px;}
   </div>
 </div>
 
+<div class="preview-overlay" id="confirmOverlay">
+  <div class="preview-sheet">
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p id="confirmMessage" style="color:var(--ink-soft);font-size:14px;"></p>
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn btn-secondary" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-primary" style="background:var(--bad);" id="confirmOkBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1135,9 +1146,38 @@ function renderHistory(){
           <option value="expired" ${d.status==='expired'?'selected':''}>Expired</option>
         </select>
         ${d.type==='quote' ? `<button class="small-link" onclick="convertToInvoice('${d.id}')">→ Invoice</button>` : ''}
+        <button class="small-link" style="color:var(--bad);" onclick="deleteDocument('${d.id}')">Delete</button>
       </div>
     </div>
   `).join('');
+}
+
+function deleteDocument(id){
+  const d = docs().find(x=>x.id===id);
+  if(!d) return;
+  showConfirm(
+    'Delete this document?',
+    `${d.docNumber} · ${d.customer.name} — this cannot be undone.`,
+    () => {
+      saveDocs(docs().filter(x=>x.id!==id));
+      renderHistory();
+      toast('Deleted ' + d.docNumber);
+    }
+  );
+}
+
+/* ---------------- custom confirm modal ---------------- */
+function showConfirm(title, message, onConfirm){
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMessage').textContent = message;
+  const btn = document.getElementById('confirmOkBtn');
+  const freshBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(freshBtn, btn);
+  freshBtn.addEventListener('click', () => { closeConfirm(); onConfirm(); });
+  document.getElementById('confirmOverlay').classList.add('active');
+}
+function closeConfirm(){
+  document.getElementById('confirmOverlay').classList.remove('active');
 }
 
 function setStatus(id, status){
