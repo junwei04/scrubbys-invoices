@@ -976,7 +976,7 @@ function buildPdfDoc(record){
   pdf.text('$'+totalAfterDiscount.toFixed(2), right, y, {align:'right'});
   y += 16;
   pdf.setFont(bodyFont(),'normal');
-  pdf.text('Deposit Paid', left+390, y, {align:'right'});
+  pdf.text(amountDue <= 0 ? 'Total Paid' : 'Deposit Paid', left+390, y, {align:'right'});
   pdf.text('$'+deposit.toFixed(2), right, y, {align:'right'});
   y += 10;
   pdf.setDrawColor(...LINEGREY);
