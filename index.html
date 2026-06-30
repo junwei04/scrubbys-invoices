@@ -12,7 +12,6 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/qrcode.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{
   --bg:#f4f3ef;
@@ -272,6 +271,16 @@ nav.tabbar .ic{font-size:18px;}
       <input type="number" id="nextInvoiceNum">
       <button class="btn btn-secondary" style="margin-top:10px;" onclick="saveNumbering()">Save Numbering</button>
     </div>
+
+    <div class="card">
+      <h2>Calendar Booking Import</h2>
+      <label>Proxy URL</label>
+      <input id="gcalProxyUrl" placeholder="https://script.google.com/macros/s/.../exec">
+      <label>Proxy Key</label>
+      <input id="gcalProxyKey" placeholder="Secret key from your Apps Script">
+      <button class="btn btn-secondary" style="margin-top:10px;" onclick="saveGcalConfig()">Save Calendar Config</button>
+      <p style="font-size:12px;color:var(--ink-soft);margin-top:8px;">Stored only on this device — never shared or uploaded anywhere.</p>
+    </div>
   </section>
 
 </main>
@@ -383,80 +392,19 @@ function uid(){ return 'd' + Date.now() + Math.random().toString(16).slice(2,6);
 
 function pad(n){ return String(n).padStart(4,'0'); }
 
-/* ---------------- Google Calendar booking import ---------------- */
-const GOOGLE_CLIENT_ID = '524027341739-keug70p2vrg8iiu340g5igrhmidhj6m5.apps.googleusercontent.com';
-let _gcalTokenClient = null;
-let _gcalAccessToken = null;
-let _gcalTokenExpiry = 0;
-
-function loadCachedGcalToken(){
-  const cached = LS.get('gcal_token', null);
-  if(cached && cached.token && cached.expiry > Date.now()){
-    _gcalAccessToken = cached.token;
-    _gcalTokenExpiry = cached.expiry;
-    return true;
-  }
-  return false;
-}
-
-function cacheGcalToken(token, expiresInSeconds){
-  _gcalAccessToken = token;
-  _gcalTokenExpiry = Date.now() + ((expiresInSeconds || 3500) * 1000) - 60000;
-  LS.set('gcal_token', { token: _gcalAccessToken, expiry: _gcalTokenExpiry });
-}
-
-let _gcalWatchdog = null;
-function clearGcalWatchdog(){
-  if(_gcalWatchdog){ clearTimeout(_gcalWatchdog); _gcalWatchdog = null; }
-}
-
-function getGcalTokenClient(){
-  if(_gcalTokenClient) return _gcalTokenClient;
-  _gcalTokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/calendar.readonly',
-    callback: (resp) => {
-      clearGcalWatchdog();
-      if(resp.access_token){
-        cacheGcalToken(resp.access_token, resp.expires_in);
-        fetchAndRenderBookings();
-      } else {
-        renderBookingError('Could not connect to Google Calendar.');
-      }
-    },
-    error_callback: (err) => {
-      clearGcalWatchdog();
-      if(err && err.type === 'popup_failed_to_open'){
-        renderBookingError('Pop-up blocked — allow pop-ups for this site and tap Import from Booking again.');
-      } else if(err && err.type === 'popup_closed'){
-        renderBookingError('Sign-in window was closed before finishing.');
-      } else {
-        renderBookingError('Could not connect to Google Calendar.');
-      }
-    }
-  });
-  return _gcalTokenClient;
-}
+/* ---------------- Google Calendar booking import (via private Apps Script proxy, no OAuth) ---------------- */
+/* Proxy URL/key are entered by you in Settings and stored only in this browser's local storage — never committed to source. */
+function gcalConfig(){ return LS.get('gcal_config', null); }
 
 function openBookingImport(){
-  document.getElementById('bookingArea').innerHTML = '<div class="empty">Connecting to Google Calendar…</div>';
+  const cfg = gcalConfig();
   document.getElementById('bookingOverlay').classList.add('active');
-  if(typeof google === 'undefined' || !google.accounts){
-    renderBookingError('Google sign-in script did not load. Check your internet connection.');
+  if(!cfg || !cfg.url || !cfg.key){
+    renderBookingError('Set up your Calendar Proxy URL and Key in Settings first.');
     return;
   }
-  if(loadCachedGcalToken()){
-    fetchAndRenderBookings();
-    return;
-  }
-  const client = getGcalTokenClient();
-  clearGcalWatchdog();
-  _gcalWatchdog = setTimeout(() => {
-    renderBookingError('Taking too long — check for a blocked pop-up, then try again.');
-  }, 10000);
-  // prompt:'' lets Google decide — it skips any popup entirely if you're still
-  // signed in and already granted access before, only asking again if truly needed.
-  client.requestAccessToken({prompt: ''});
+  document.getElementById('bookingArea').innerHTML = '<div class="empty">Loading upcoming bookings…</div>';
+  fetchBookingsJSONP(cfg);
 }
 
 function closeBookingImport(){
@@ -467,42 +415,52 @@ function renderBookingError(msg){
   document.getElementById('bookingArea').innerHTML = `<div class="empty">${msg}</div>`;
 }
 
-async function fetchAndRenderBookings(){
-  document.getElementById('bookingArea').innerHTML = '<div class="empty">Loading upcoming bookings…</div>';
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const timeMin = startOfToday.toISOString();
-  const future = new Date(now.getTime() + 60*24*60*60*1000);
-  const timeMax = future.toISOString();
-  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=50`;
-  try{
-    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + _gcalAccessToken } });
-    if(!res.ok){
-      if(res.status === 401){ _gcalAccessToken = null; LS.set('gcal_token', null); }
-      renderBookingError('Could not load bookings (status ' + res.status + '). Try again.');
-      return;
-    }
-    const data = await res.json();
-    const events = (data.items || []).filter(e => e.summary);
-    if(events.length === 0){
-      renderBookingError('No upcoming bookings found in the next 60 days.');
-      return;
-    }
-    document.getElementById('bookingArea').innerHTML = events.map((e, idx) => {
-      const dateLabel = (e.start.dateTime ? new Date(e.start.dateTime) : new Date(e.start.date+'T00:00:00')).toDateString();
-      return `
-        <div class="history-item" style="cursor:pointer;" onclick='applyBooking(${idx})'>
-          <div class="meta">
-            <div class="docnum">${e.summary}</div>
-            <div class="client">${dateLabel}${e.location ? ' · '+e.location : ''}</div>
-          </div>
-        </div>
-      `;
-    }).join('');
-    window._gcalEvents = events;
-  }catch(err){
-    renderBookingError('Could not load bookings: ' + (err && err.message ? err.message : 'network error') + '. Try again.');
+function fetchBookingsJSONP(cfg){
+  const cbName = '_gcalCallback_' + Date.now();
+  const scriptEl = document.createElement('script');
+
+  const cleanup = () => {
+    clearTimeout(timer);
+    delete window[cbName];
+    scriptEl.remove();
+  };
+
+  const timer = setTimeout(() => {
+    cleanup();
+    renderBookingError('Taking too long — check your internet connection and try again.');
+  }, 10000);
+
+  window[cbName] = (data) => {
+    cleanup();
+    renderBookingList(data);
+  };
+
+  scriptEl.onerror = () => {
+    cleanup();
+    renderBookingError('Could not load bookings. Check your Proxy URL/Key in Settings.');
+  };
+  scriptEl.src = `${cfg.url}?key=${encodeURIComponent(cfg.key)}&callback=${cbName}`;
+  document.body.appendChild(scriptEl);
+}
+
+function renderBookingList(data){
+  const events = (data && data.items || []).filter(e => e.summary);
+  if(events.length === 0){
+    renderBookingError('No upcoming bookings found in the next 60 days.');
+    return;
   }
+  document.getElementById('bookingArea').innerHTML = events.map((e, idx) => {
+    const dateLabel = (e.start.dateTime ? new Date(e.start.dateTime) : new Date(e.start.date+'T00:00:00')).toDateString();
+    return `
+      <div class="history-item" style="cursor:pointer;" onclick='applyBooking(${idx})'>
+        <div class="meta">
+          <div class="docnum">${e.summary}</div>
+          <div class="client">${dateLabel}${e.location ? ' · '+e.location : ''}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  window._gcalEvents = events;
 }
 
 function applyBooking(idx){
@@ -1336,13 +1294,26 @@ function saveNumbering(){
   if(!editingId) setDocType(currentType);
 }
 
+function loadGcalConfigForm(){
+  const cfg = gcalConfig();
+  document.getElementById('gcalProxyUrl').value = cfg ? (cfg.url || '') : '';
+  document.getElementById('gcalProxyKey').value = cfg ? (cfg.key || '') : '';
+}
+function saveGcalConfig(){
+  LS.set('gcal_config', {
+    url: document.getElementById('gcalProxyUrl').value.trim(),
+    key: document.getElementById('gcalProxyKey').value.trim()
+  });
+  toast('Calendar config saved');
+}
+
 /* ---------------- navigation ---------------- */
 function showScreen(name){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
   document.querySelectorAll('nav.tabbar button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
   if(name==='history') renderHistory();
-  if(name==='settings'){ loadBusinessInfoForm(); renderServiceList(); loadNumberingForm(); }
+  if(name==='settings'){ loadBusinessInfoForm(); renderServiceList(); loadNumberingForm(); loadGcalConfigForm(); }
 }
 
 function startNewDocument(){
