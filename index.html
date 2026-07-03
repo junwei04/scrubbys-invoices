@@ -328,10 +328,37 @@ nav.tabbar .ic{font-size:18px;}
 <div class="toast" id="toast"></div>
 
 <script>
+/* ---------------- Firebase sync ---------------- */
+const FB_BASE = 'https://invoices-fbae9-default-rtdb.asia-southeast1.firebasedatabase.app';
+const FB_SYNC = {
+  'documents':    'scrubbys/documents',
+  'biz_info':     'scrubbys/biz_info',
+  'service_list': 'scrubbys/service_list',
+  'numbering':    'scrubbys/numbering',
+};
+function fbPush(key, val){
+  const path = FB_SYNC[key];
+  if(!path) return;
+  fetch(`${FB_BASE}/${path}.json`, {
+    method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(val)
+  }).catch(()=>{});
+}
+async function fbPull(){
+  try{
+    const r = await fetch(`${FB_BASE}/scrubbys.json`);
+    const data = await r.json();
+    if(data && typeof data==='object'){
+      ['documents','biz_info','service_list','numbering'].forEach(k=>{
+        if(data[k]!=null) localStorage.setItem(k, JSON.stringify(data[k]));
+      });
+    }
+  }catch(e){ console.warn('Firebase offline, using local data'); }
+}
+
 /* ---------------- storage helpers ---------------- */
 const LS = {
   get(key, fallback){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; } },
-  set(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+  set(key, val){ localStorage.setItem(key, JSON.stringify(val)); fbPush(key, val); }
 };
 
 const DEFAULT_BUSINESS = {
@@ -1318,7 +1345,10 @@ function toast(msg){
 }
 
 /* ---------------- init ---------------- */
-resetNewForm();
+(async function(){
+  await fbPull();
+  resetNewForm();
+})();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
