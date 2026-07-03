@@ -283,6 +283,15 @@ nav.tabbar .ic{font-size:18px;}
     </div>
   </section>
 
+  <section class="card">
+    <h2>Cloud Sync</h2>
+    <div class="form-group">
+      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Sync all invoices and settings to the cloud so your phone and desktop stay in sync.</p>
+      <button class="btn btn-primary" onclick="fbSyncNow()">Upload Everything to Cloud</button>
+      <button class="btn btn-secondary" style="margin-top:8px;" onclick="fbPullNow()">Download from Cloud</button>
+    </div>
+  </section>
+
 </main>
 
 <nav class="tabbar">
@@ -1321,6 +1330,30 @@ function loadGcalConfigForm(){
   const cfg = gcalConfig();
   document.getElementById('gcalProxyUrl').value = cfg ? (cfg.url || '') : '';
   document.getElementById('gcalProxyKey').value = cfg ? (cfg.key || '') : '';
+}
+async function fbSyncNow(){
+  try{
+    const keys = ['documents','biz_info','service_list','numbering'];
+    await Promise.all(keys.map(k=>{
+      const v = localStorage.getItem(k);
+      if(!v) return Promise.resolve();
+      return fetch(`${FB_BASE}/scrubbys/${k}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:v});
+    }));
+    toast('Uploaded to cloud successfully');
+  }catch(e){ toast('Upload failed — check internet connection'); }
+}
+async function fbPullNow(){
+  try{
+    const r = await fetch(`${FB_BASE}/scrubbys.json`);
+    const data = await r.json();
+    if(data && typeof data==='object'){
+      ['documents','biz_info','service_list','numbering'].forEach(k=>{
+        if(data[k]!=null) localStorage.setItem(k, JSON.stringify(data[k]));
+      });
+      renderHistory();
+      toast('Downloaded from cloud successfully');
+    } else { toast('Nothing in cloud yet — upload from your other device first'); }
+  }catch(e){ toast('Download failed — check internet connection'); }
 }
 function saveGcalConfig(){
   LS.set('gcal_config', {
