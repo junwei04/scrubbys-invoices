@@ -1,4 +1,4 @@
-const CACHE_NAME = 'scrubbys-invoice-v9';
+const CACHE_NAME = 'scrubbys-invoice-v10';
 const ASSETS = [
   './',
   './index.html',

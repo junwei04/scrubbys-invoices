@@ -348,8 +348,15 @@ async function fbPull(){
     const r = await fetch(`${FB_BASE}/scrubbys.json`);
     const data = await r.json();
     if(data && typeof data==='object'){
+      // Firebase has data — pull it into localStorage
       ['documents','biz_info','service_list','numbering'].forEach(k=>{
         if(data[k]!=null) localStorage.setItem(k, JSON.stringify(data[k]));
+      });
+    } else {
+      // Firebase is empty — push whatever is in localStorage up (first-time migration)
+      ['documents','biz_info','service_list','numbering'].forEach(k=>{
+        const v = localStorage.getItem(k);
+        if(v) fetch(`${FB_BASE}/scrubbys/${k}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:v}).catch(()=>{});
       });
     }
   }catch(e){ console.warn('Firebase offline, using local data'); }
