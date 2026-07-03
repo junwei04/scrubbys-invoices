@@ -1334,12 +1334,17 @@ function loadGcalConfigForm(){
 async function fbSyncNow(){
   try{
     const keys = ['documents','biz_info','service_list','numbering'];
+    let uploaded = 0;
     await Promise.all(keys.map(k=>{
       const v = localStorage.getItem(k);
       if(!v) return Promise.resolve();
+      if(k==='documents'){
+        try{ const arr=JSON.parse(v); if(!Array.isArray(arr)||arr.length===0) return Promise.resolve(); }catch(e){}
+      }
+      uploaded++;
       return fetch(`${FB_BASE}/scrubbys/${k}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:v});
     }));
-    toast('Uploaded to cloud successfully');
+    toast(uploaded>0 ? 'Uploaded to cloud successfully' : 'Nothing to upload yet');
   }catch(e){ toast('Upload failed — check internet connection'); }
 }
 async function fbPullNow(){
@@ -1348,7 +1353,9 @@ async function fbPullNow(){
     const data = await r.json();
     if(data && typeof data==='object'){
       ['documents','biz_info','service_list','numbering'].forEach(k=>{
-        if(data[k]!=null) localStorage.setItem(k, JSON.stringify(data[k]));
+        if(data[k]==null) return;
+        if(k==='documents' && (!Array.isArray(data[k]) || data[k].length===0)) return;
+        localStorage.setItem(k, JSON.stringify(data[k]));
       });
       renderHistory();
       toast('Downloaded from cloud successfully');
