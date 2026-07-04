@@ -348,28 +348,26 @@ async function fbPull(){
   try{
     const r = await fetch(`${FB_BASE}/scrubbys.json`);
     const data = await r.json();
-    if(data && typeof data==='object'){
-      ['documents','biz_info','service_list','numbering'].forEach(k=>{
-        if(data[k]==null) return;
-        if(k==='documents'){
-          const cloud = Array.isArray(data[k]) ? data[k] : [];
-          if(cloud.length===0) return;
-          try{
-            const local = JSON.parse(localStorage.getItem(k)||'[]');
-            if(cloud.length < local.length) return;
-          }catch(e){}
+    const cloud = (data && typeof data==='object') ? data : {};
+    ['documents','biz_info','service_list','numbering'].forEach(k=>{
+      const cloudVal = cloud[k];
+      const localRaw = localStorage.getItem(k);
+      if(k==='documents'){
+        const cloudDocs = Array.isArray(cloudVal) ? cloudVal : [];
+        const localDocs = localRaw ? (()=>{ try{ return JSON.parse(localRaw); }catch(e){ return []; } })() : [];
+        if(cloudDocs.length > localDocs.length){
+          // Cloud has more — pull
+          localStorage.setItem(k, JSON.stringify(cloudDocs));
+        } else if(localDocs.length > 0 && localDocs.length >= cloudDocs.length){
+          // Local has more (or equal) — push to cloud
+          fetch(`${FB_BASE}/scrubbys/${k}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(localDocs)}).catch(()=>{});
         }
-        localStorage.setItem(k, JSON.stringify(data[k]));
-      });
-      renderHistory();
-    } else {
-      ['documents','biz_info','service_list','numbering'].forEach(k=>{
-        const v = localStorage.getItem(k);
-        if(!v) return;
-        if(k==='documents'){ try{ if(JSON.parse(v).length===0) return; }catch(e){} }
-        fetch(`${FB_BASE}/scrubbys/${k}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:v}).catch(()=>{});
-      });
-    }
+      } else {
+        if(cloudVal!=null) localStorage.setItem(k, JSON.stringify(cloudVal));
+        else if(localRaw) fetch(`${FB_BASE}/scrubbys/${k}.json`,{method:'PUT',headers:{'Content-Type':'application/json'},body:localRaw}).catch(()=>{});
+      }
+    });
+    renderHistory();
   }catch(e){ console.warn('Firebase offline, using local data'); }
 }
 
