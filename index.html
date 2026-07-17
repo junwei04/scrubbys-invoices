@@ -326,6 +326,18 @@ nav.tabbar .ic{font-size:18px;}
   </div>
 </div>
 
+<div class="preview-overlay" id="saveChoiceOverlay">
+  <div class="preview-sheet">
+    <h3>Already sent</h3>
+    <p id="saveChoiceMsg" style="color:var(--ink-soft);font-size:14px;"></p>
+    <div class="btn-row" style="margin-top:14px;flex-direction:column;gap:8px;">
+      <button class="btn btn-primary" id="saveCopyBtn">Save as updated copy</button>
+      <button class="btn btn-secondary" id="saveOverwriteBtn">Overwrite original</button>
+      <button class="btn btn-secondary" onclick="closeSaveChoice()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -476,9 +488,16 @@ async function fetchBookings(cfg, attempt){
 }
 
 function renderBookingList(data){
-  const events = (data && data.items || []).filter(e => e.summary);
+  // Only show bookings from at most 1 day ago (yesterday) through the future.
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 1); cutoff.setHours(0,0,0,0);
+  const events = (data && data.items || []).filter(e => {
+    if(!e.summary || !e.start) return false;
+    const ds = e.start.dateTime || (e.start.date ? e.start.date + 'T00:00:00' : null);
+    if(!ds) return false;
+    return new Date(ds) >= cutoff;
+  });
   if(events.length === 0){
-    renderBookingError('No upcoming bookings found in the next 60 days.');
+    renderBookingError('No bookings from yesterday onwards.');
     return;
   }
   document.getElementById('bookingArea').innerHTML = events.map((e, idx) => {
@@ -640,46 +659,71 @@ function saveDocument(){
   const cleanItems = lineItems.filter(i => (i.desc && i.desc.trim()) || i.qty*i.price>0);
   if(cleanItems.length===0){ toast('Add at least one line item'); return; }
 
-  const t = computeTotals();
-  const docNumber = document.getElementById('docNumber').value;
   const existing = editingId ? docs().find(d=>d.id===editingId) : null;
+  // If editing a document that has already been sent/generated, ask whether to
+  // save as an updated copy (new number) or overwrite the original.
+  if(existing && existing.status && existing.status !== 'draft'){
+    showSaveChoice(existing);
+    return;
+  }
+  commitSave(false);
+}
 
-  const record = {
-    id: editingId || uid(),
-    type: currentType,
+// Derive the next revision number by appending an incrementing suffix to the
+// base number, e.g. QT-0002 -> QT-00021 -> QT-00022 ...
+function nextRevisionNumber(base){
+  const taken = new Set(docs().map(d=>d.docNumber));
+  let rev = 1;
+  while(taken.has(base + rev)) rev++;
+  return base + rev;
+}
+
+function commitSave(asCopy){
+  const existing = editingId ? docs().find(d=>d.id===editingId) : null;
+  const docNumEl = document.getElementById('docNumber');
+  if(asCopy && existing){
+    docNumEl.value = nextRevisionNumber(existing.docNumber);
+  }
+  const docNumber = docNumEl.value;
+
+  const base = getCurrentRecordFromForm();
+  const record = Object.assign({}, base, {
+    id: (asCopy || !editingId) ? uid() : editingId,
     docNumber,
-    date: document.getElementById('docDate').value,
-    dueDate: document.getElementById('docDueDate').value || document.getElementById('docDate').value,
-    customer: {
-      name: custName,
-      company: document.getElementById('custCompany').value.trim(),
-      phone: document.getElementById('custPhone').value.trim(),
-      address: document.getElementById('custAddress').value.trim()
-    },
-    items: cleanItems,
-    notes: document.getElementById('docNotes').value.trim(),
-    subtotal: t.subtotal,
-    discount: t.discount,
-    deposit: t.deposit,
-    total: t.total,
-    amountDue: t.amountDue,
-    status: existing ? existing.status : 'draft',
-    createdAt: existing ? (existing.createdAt || todayStr()) : todayStr()
-  };
+    status: (asCopy || !existing) ? 'draft' : existing.status,
+    createdAt: (asCopy || !existing) ? todayStr() : (existing.createdAt || todayStr())
+  });
 
   let all = docs();
-  if(editingId){
-    all = all.map(d => d.id===editingId ? record : d);
-  } else {
+  if(asCopy || !editingId){
     all.push(record);
-    const n = numbering();
-    if(currentType==='quote') n.quote += 1; else n.invoice += 1;
-    saveNumberingRaw(n);
+    // A revision copy reuses the base number, so it does not consume a fresh counter.
+    if(!asCopy){
+      const n = numbering();
+      if(currentType==='quote') n.quote += 1; else n.invoice += 1;
+      saveNumberingRaw(n);
+    }
+  } else {
+    all = all.map(d => d.id===editingId ? record : d);
   }
   saveDocs(all);
-  toast('Saved ' + (currentType==='quote'?'quote':'invoice') + ' ' + docNumber);
   editingId = record.id;
+  renderHistory();
+  toast((asCopy ? 'Saved updated copy ' : 'Saved ') + docNumber);
 }
+
+function showSaveChoice(existing){
+  document.getElementById('saveChoiceMsg').textContent =
+    existing.docNumber + ' has already been sent. Save your changes as an updated copy with a new number, or overwrite the original?';
+  const copyBtn = document.getElementById('saveCopyBtn');
+  const owBtn = document.getElementById('saveOverwriteBtn');
+  const freshCopy = copyBtn.cloneNode(true); copyBtn.parentNode.replaceChild(freshCopy, copyBtn);
+  const freshOw = owBtn.cloneNode(true); owBtn.parentNode.replaceChild(freshOw, owBtn);
+  freshCopy.addEventListener('click', ()=>{ closeSaveChoice(); commitSave(true); });
+  freshOw.addEventListener('click', ()=>{ closeSaveChoice(); commitSave(false); });
+  document.getElementById('saveChoiceOverlay').classList.add('active');
+}
+function closeSaveChoice(){ document.getElementById('saveChoiceOverlay').classList.remove('active'); }
 
 /* ---------------- PayNow QR (EMVCo / SGQR spec) ---------------- */
 function crc16(str){
@@ -1159,6 +1203,7 @@ function renderHistory(){
           <option value="expired" ${d.status==='expired'?'selected':''}>Expired</option>
         </select>
         ${d.type==='quote' ? `<button class="small-link" onclick="convertToInvoice('${d.id}')">→ Invoice</button>` : ''}
+        <button class="small-link" onclick="duplicateDocument('${d.id}')">Copy</button>
         <button class="small-link" style="color:var(--bad);" onclick="deleteDocument('${d.id}')">Delete</button>
       </div>
     </div>
@@ -1225,6 +1270,27 @@ function loadDocument(id){
   lineItems = JSON.parse(JSON.stringify(d.items));
   renderLineItems();
   showScreen('new');
+}
+
+function duplicateDocument(id){
+  const d = docs().find(x=>x.id===id);
+  if(!d) return;
+  editingId = null;              // brand-new document
+  currentType = d.type;
+  setDocType(d.type);            // assigns a fresh number since editingId is null
+  document.getElementById('docDate').value = todayStr();
+  document.getElementById('docDueDate').value = todayStr();
+  document.getElementById('custName').value = d.customer.name;
+  document.getElementById('custCompany').value = d.customer.company || '';
+  document.getElementById('custPhone').value = d.customer.phone || '';
+  document.getElementById('custAddress').value = d.customer.address || '';
+  document.getElementById('docNotes').value = d.notes || '';
+  document.getElementById('docDiscount').value = d.discount || 0;
+  document.getElementById('docDeposit').value = d.deposit || 0;
+  lineItems = JSON.parse(JSON.stringify(d.items));
+  renderLineItems();
+  showScreen('new');
+  toast('Copied ' + d.docNumber + ' — review & Save');
 }
 
 function convertToInvoice(id){
