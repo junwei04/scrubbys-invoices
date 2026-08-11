@@ -449,6 +449,20 @@ function docs(){ return LS.get('documents', []); }
 function saveDocs(d){ LS.set('documents', d); }
 function numbering(){ return LS.get('numbering', {quote:1, invoice:1}); }
 function saveNumberingRaw(n){ LS.set('numbering', n); }
+// Next number is derived from the actual documents (highest existing + 1) so it can
+// never repeat, no matter how cloud sync races between devices. The stored counter is
+// only used as a floor (e.g. if you manually set a higher starting number in Settings).
+function nextNumberFor(type){
+  const prefix = type==='quote' ? 'QT-' : 'INV-';
+  const re = new RegExp('^' + prefix + '(\\d{4})$');
+  let max = 0;
+  docs().forEach(d=>{
+    const m = d.docNumber && d.docNumber.match(re);
+    if(m){ const v = parseInt(m[1],10); if(v>max) max = v; }
+  });
+  const floor = (numbering()[type] || 1);
+  return Math.max(max + 1, floor);
+}
 
 /* ---------------- state ---------------- */
 let currentType = 'quote';
@@ -552,8 +566,7 @@ function setDocType(type){
   document.getElementById('docNumLabel').textContent = type==='quote' ? 'Quote No.' : 'Invoice No.';
   document.getElementById('dueDateRow').style.display = type==='invoice' ? '' : 'none';
   if(!editingId){
-    const n = numbering();
-    const num = type==='quote' ? n.quote : n.invoice;
+    const num = nextNumberFor(type);
     document.getElementById('docNumber').value = (type==='quote' ? 'QT-' : 'INV-') + pad(num);
   }
 }
