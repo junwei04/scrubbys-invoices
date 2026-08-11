@@ -191,6 +191,8 @@ nav.tabbar .ic{font-size:18px;}
       <input id="custCompany" placeholder="Company name, if any">
       <label>Phone / Contact</label>
       <input id="custPhone" placeholder="9XXXXXXX">
+      <label>Email (optional)</label>
+      <input id="custEmail" type="email" placeholder="name@email.com">
       <label>Address (optional)</label>
       <textarea id="custAddress" placeholder="Site address"></textarea>
     </div>
@@ -233,6 +235,7 @@ nav.tabbar .ic{font-size:18px;}
   <section class="screen" id="screen-history">
     <div class="card">
       <h2>History</h2>
+      <button class="btn btn-secondary" style="margin-bottom:12px;" onclick="refreshFromCloud()">🔄 Refresh</button>
       <div id="historyList"></div>
     </div>
   </section>
@@ -468,6 +471,8 @@ function nextNumberFor(type){
 let currentType = 'quote';
 let editingId = null;
 let lineItems = [];
+let currentScreen = 'new';
+let formDirty = false;
 
 function uid(){ return 'd' + Date.now() + Math.random().toString(16).slice(2,6); }
 
@@ -667,6 +672,7 @@ function resetNewForm(){
   document.getElementById('custName').value='';
   document.getElementById('custCompany').value='';
   document.getElementById('custPhone').value='';
+  document.getElementById('custEmail').value='';
   document.getElementById('custAddress').value='';
   document.getElementById('docNotes').value='';
   document.getElementById('docDate').value = todayStr();
@@ -675,6 +681,7 @@ function resetNewForm(){
   document.getElementById('docDeposit').value = 0;
   setDocType('quote');
   renderLineItems();
+  formDirty = false;
 }
 
 /* ---------------- save ---------------- */
@@ -703,11 +710,21 @@ function nextRevisionNumber(base){
   return base + rev;
 }
 
+// Backstop: is this number already used by a different document?
+function isNumberTaken(num, exceptId){
+  return docs().some(d => d.docNumber === num && d.id !== exceptId);
+}
+
 function commitSave(asCopy){
   const existing = editingId ? docs().find(d=>d.id===editingId) : null;
   const docNumEl = document.getElementById('docNumber');
   if(asCopy && existing){
     docNumEl.value = nextRevisionNumber(existing.docNumber);
+  } else if(!editingId && isNumberTaken(docNumEl.value, null)){
+    const fixed = (currentType==='quote'?'QT-':'INV-') + pad(nextNumberFor(currentType));
+    if(confirm(docNumEl.value + ' is already used by another document.\n\nUse ' + fixed + ' instead? (Recommended)')){
+      docNumEl.value = fixed;
+    }
   }
   const docNumber = docNumEl.value;
 
@@ -733,6 +750,7 @@ function commitSave(asCopy){
   }
   saveDocs(all);
   editingId = record.id;
+  formDirty = false;
   renderHistory();
   toast((asCopy ? 'Saved updated copy ' : 'Saved ') + docNumber);
 }
@@ -979,6 +997,7 @@ function buildPdfDoc(record){
   pdf.setFontSize(10);
   if(record.customer.company){ pdf.text(record.customer.company, left, custY); custY += 13; }
   if(record.customer.phone){ pdf.text(record.customer.phone, left, custY); custY += 13; }
+  if(record.customer.email){ pdf.text(record.customer.email, left, custY); custY += 13; }
   if(record.customer.address){
     const lines = pdf.splitTextToSize(record.customer.address, 260);
     pdf.text(lines, left, custY);
@@ -1142,6 +1161,7 @@ function getCurrentRecordFromForm(){
       name: document.getElementById('custName').value.trim() || 'Customer',
       company: document.getElementById('custCompany').value.trim(),
       phone: document.getElementById('custPhone').value.trim(),
+      email: document.getElementById('custEmail').value.trim(),
       address: document.getElementById('custAddress').value.trim()
     },
     items: cleanItems,
@@ -1287,6 +1307,7 @@ function loadDocument(id){
   document.getElementById('docDueDate').value = d.dueDate || d.date;
   document.getElementById('custName').value = d.customer.name;
   document.getElementById('custCompany').value = d.customer.company || '';
+  document.getElementById('custEmail').value = d.customer.email || '';
   document.getElementById('custPhone').value = d.customer.phone;
   document.getElementById('custAddress').value = d.customer.address;
   document.getElementById('docNotes').value = d.notes;
@@ -1307,6 +1328,7 @@ function duplicateDocument(id){
   document.getElementById('docDueDate').value = todayStr();
   document.getElementById('custName').value = d.customer.name;
   document.getElementById('custCompany').value = d.customer.company || '';
+  document.getElementById('custEmail').value = d.customer.email || '';
   document.getElementById('custPhone').value = d.customer.phone || '';
   document.getElementById('custAddress').value = d.customer.address || '';
   document.getElementById('docNotes').value = d.notes || '';
@@ -1330,6 +1352,7 @@ function convertToInvoice(id){
   document.getElementById('docDueDate').value = todayStr();
   document.getElementById('custName').value = d.customer.name;
   document.getElementById('custCompany').value = d.customer.company || '';
+  document.getElementById('custEmail').value = d.customer.email || '';
   document.getElementById('custPhone').value = d.customer.phone;
   document.getElementById('custAddress').value = d.customer.address;
   document.getElementById('docNotes').value = d.notes;
@@ -1448,11 +1471,27 @@ function saveGcalConfig(){
 
 /* ---------------- navigation ---------------- */
 function showScreen(name){
+  // Prompt to save an unsaved invoice before leaving the generation page
+  if(currentScreen==='new' && name!=='new' && formDirty){
+    if(confirm('You have an unsaved invoice.\n\nClick OK to save it now, or Cancel to leave without saving.')){
+      saveDocument();
+      return;
+    }
+    formDirty = false;
+  }
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
   document.querySelectorAll('nav.tabbar button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
+  currentScreen = name;
   if(name==='history') renderHistory();
   if(name==='settings'){ loadBusinessInfoForm(); renderServiceList(); loadNumberingForm(); loadTermsForm(); loadGcalConfigForm(); }
+}
+
+async function refreshFromCloud(){
+  toast('Refreshing…');
+  await fbPull();
+  renderHistory();
+  toast('Up to date');
 }
 
 function startNewDocument(){
@@ -1475,6 +1514,11 @@ function toast(msg){
 
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible') fbPull();
+});
+
+// Track edits so we can prompt before leaving an unsaved invoice
+['input','change'].forEach(ev=>{
+  document.getElementById('screen-new').addEventListener(ev, ()=>{ formDirty = true; });
 });
 
 if('serviceWorker' in navigator){
