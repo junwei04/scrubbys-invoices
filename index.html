@@ -154,16 +154,23 @@ nav.tabbar .ic{font-size:18px;}
 </div>
 <script>
 (function(){
-  var lock=document.getElementById('pinLock');
-  try{ if(localStorage.getItem('app_unlocked')==='yes'){ lock.parentNode.removeChild(lock); return; } }catch(e){}
+  var IDLE_MS=5*60*1000, KEY='app_unlock_ts', lock=document.getElementById('pinLock');
   var inp=document.getElementById('pinInput'), btn=document.getElementById('pinBtn'), err=document.getElementById('pinErr');
-  function go(){
-    if(inp.value==='6666'){ try{localStorage.setItem('app_unlocked','yes');}catch(e){} lock.parentNode.removeChild(lock); }
-    else { err.textContent='Wrong PIN'; inp.value=''; inp.focus(); }
-  }
+  function now(){ return Date.now(); }
+  function fresh(){ try{ var t=parseInt(localStorage.getItem(KEY)||'0',10); return t && (now()-t)<IDLE_MS; }catch(e){ return false; } }
+  function touch(){ try{ localStorage.setItem(KEY, String(now())); }catch(e){} }
+  function show(){ lock.style.display='flex'; err.textContent=''; inp.value=''; setTimeout(function(){ try{inp.focus();}catch(e){} },80); }
+  function hide(){ lock.style.display='none'; }
+  function go(){ if(inp.value==='6666'){ touch(); hide(); } else { err.textContent='Wrong PIN'; inp.value=''; inp.focus(); } }
   btn.addEventListener('click', go);
   inp.addEventListener('keydown', function(e){ if(e.key==='Enter') go(); });
-  setTimeout(function(){ try{inp.focus();}catch(e){} }, 100);
+  if(fresh()){ touch(); hide(); } else { show(); }
+  var last=0;
+  function activity(){ if(lock.style.display==='none'){ var n=now(); if(n-last>5000){ last=n; touch(); } } }
+  ['pointerdown','keydown','touchstart','click','scroll'].forEach(function(ev){ document.addEventListener(ev, activity, {passive:true}); });
+  function check(){ if(lock.style.display==='none' && !fresh()){ try{localStorage.removeItem(KEY);}catch(e){} show(); } }
+  setInterval(check, 15000);
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') check(); });
 })();
 </script>
 
