@@ -145,6 +145,28 @@ nav.tabbar .ic{font-size:18px;}
 </head>
 <body>
 
+<div id="pinLock" style="position:fixed;inset:0;z-index:100000;background:#15263a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="color:#fff;font-size:19px;font-weight:600;letter-spacing:.3px;">Enter PIN</div>
+  <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="6"
+    style="font-size:26px;text-align:center;letter-spacing:12px;width:170px;padding:12px 14px;border:none;border-radius:12px;outline:none;">
+  <button id="pinBtn" style="background:#2c5c9e;color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:16px;font-weight:600;cursor:pointer;">Unlock</button>
+  <div id="pinErr" style="color:#ff9a9a;font-size:13px;min-height:16px;"></div>
+</div>
+<script>
+(function(){
+  var lock=document.getElementById('pinLock');
+  try{ if(localStorage.getItem('app_unlocked')==='yes'){ lock.parentNode.removeChild(lock); return; } }catch(e){}
+  var inp=document.getElementById('pinInput'), btn=document.getElementById('pinBtn'), err=document.getElementById('pinErr');
+  function go(){
+    if(inp.value==='6666'){ try{localStorage.setItem('app_unlocked','yes');}catch(e){} lock.parentNode.removeChild(lock); }
+    else { err.textContent='Wrong PIN'; inp.value=''; inp.focus(); }
+  }
+  btn.addEventListener('click', go);
+  inp.addEventListener('keydown', function(e){ if(e.key==='Enter') go(); });
+  setTimeout(function(){ try{inp.focus();}catch(e){} }, 100);
+})();
+</script>
+
 <header class="topbar">
   <div>
     <h1 id="topbarTitle">Scrubbys</h1>
