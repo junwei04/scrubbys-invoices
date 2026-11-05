@@ -1193,8 +1193,10 @@ function buildPdfDoc(record){
     pdf.setTextColor(...MUTED);
     terms().forEach((term) => {
       const lines = pdf.splitTextToSize('•  ' + term, width);
+      const blockH = lines.length*11.5 + 5;
+      if(y + blockH > pdf.internal.pageSize.getHeight() - 40){ pdf.addPage(); y = 48; }
       pdf.text(lines, left, y);
-      y += lines.length*11.5 + 5;
+      y += blockH;
     });
   }
 
